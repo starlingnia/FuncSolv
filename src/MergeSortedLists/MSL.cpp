@@ -1,7 +1,5 @@
 #include "MergeSortedLists/MergeSortedLists.h"
 #include <future>
-#include <algorithm>
-#include <ranges>
 
 std::shared_ptr<ListNode> MergeKSortedListsSolution::mergeTwoLists(
     std::shared_ptr<ListNode> left_list, 

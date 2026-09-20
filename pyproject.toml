@@ -7,7 +7,12 @@ authors = [
     { name = "starlingnia", email = "rahalinedophy@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "numpy>=2.5.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.scripts]
 funcsolv = "funcsolv:main"
