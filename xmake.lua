@@ -2,7 +2,6 @@ target("FuncSolv")
     set_kind("binary")
     set_languages("c++26")
     
-    -- 自动扫描 src 及 src/tasks 下的 cpp 文件
     add_rules("mode.debug", "mode.release")
     
     -- 首次构建时自动重命名占位目录至 Pitchfork 标准目录
