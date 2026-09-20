@@ -55,5 +55,18 @@ class TaskOrchestrator:
         return result_list
 
 if __name__ == "__main__":
-
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parent.parent
+    lib_candidates = [
+        project_root / "build" / "libformergesortlists.so",
+        project_root / "build" / "libformergesortlists.dylib",
+    ]
+    lib_path = next((p for p in lib_candidates if p.exists()), None)
+    if lib_path:
+        orchestrator = TaskOrchestrator(str(lib_path))
+        sample_input = [[1, 4, 7], [2, 5, 8], [3, 6, 9]]
+        result = orchestrator.coordinate_execution(sample_input)
+        print(f"示例运行结果: {result}")
+    else:
+        print("未找到 C++ 共享库，请先编译生成对应库。")
 
