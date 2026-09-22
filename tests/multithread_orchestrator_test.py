@@ -1,11 +1,11 @@
 """
 TaskOrchestrator 多线程并发调度与正确性评测自动化测试脚本
 ------------------------------------------------------------
-- 结合 Python 高层业务调度与 C++ 底层多路归并引擎进行多线程并发测试
+- 基于模块化编程思想，将 IO 落盘、数据序列化与用例生成下沉至 funcsolv.io 组件
+- 采用非阻塞异步文件写出器 (AsyncFileWriter)，消除主线程与工作线程全量阻塞
 - 涵盖各种不同特征的业务负载数据集（标准规模、高分支、跨零负数、稠密重复、极端边界、逆序区间）
 - 对并发输出结果进行严格的数学属性校验：数量守恒、单调递增有序性、全量元素内容一致性
 - 实时统计各线程与系统维度的耗时、吞吐率与并行加速比
-- 支持将原始输入、归并结果及详尽性能评测报告持久化落盘至 docs/ 目录
 - 全面集成 unittest 测试用例，便于接入 CI/CD 流水线与自动化测试流程
 """
 
@@ -13,16 +13,13 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-import os
 from pathlib import Path
 import sys
 import time
 from typing import List, Optional, Tuple
 import unittest
 
-import numpy as np
-
-# 动态配置模块导入路径，确保无论在哪个目录启动均可正确定位工程根目录与 tools 目录
+# 配置模块导入路径
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_DIR.parent
 SRC_DIR = PROJECT_ROOT / "src"
@@ -31,13 +28,19 @@ for path_entry in (str(PROJECT_ROOT), str(SRC_DIR)):
     if path_entry not in sys.path:
         sys.path.insert(0, path_entry)
 
-# 从 tools/orsortlist 导入高层任务编排器 TaskOrchestrator
 from tools.orsortlist import TaskOrchestrator
+from tools.io import (
+    AsyncFileWriter,
+    serialize_thread_input_block,
+    serialize_thread_output_block,
+    format_multithread_report,
+    generate_workload_by_type,
+)
 
 
 def resolve_library_path(custom_path: Optional[str] = None) -> Path:
     """
-    智能解析 C++ 动态共享库路径，兼容多平台（macOS .dylib / Linux .so）与自定义路径
+    智能解析 C++ 动态共享库路径，遵循 Pitchfork 规范优先定位 lib/ 目录
     """
     if custom_path:
         target = Path(custom_path)
@@ -46,24 +49,22 @@ def resolve_library_path(custom_path: Optional[str] = None) -> Path:
         if target.exists():
             return target
 
-    # 预设候选路径（支持常见构建输出路径与扩展名）
     candidates = [
-        PROJECT_ROOT / "build" / "libformergesortlists.so",
+        PROJECT_ROOT / "lib" / "libformergesortlists.dylib",
+        PROJECT_ROOT / "lib" / "libformergesortlists.so",
         PROJECT_ROOT / "build" / "libformergesortlists.dylib",
-        PROJECT_ROOT / "bin" / "libformergesortlists.so",
+        PROJECT_ROOT / "build" / "libformergesortlists.so",
         PROJECT_ROOT / "bin" / "libformergesortlists.dylib",
-        PROJECT_ROOT / "build" / "macosx" / "arm64" / "release" / "libformergesortlists.dylib",
-        PROJECT_ROOT / "build" / "macosx" / "arm64" / "release" / "libformergesortlists.so",
+        PROJECT_ROOT / "bin" / "libformergesortlists.so",
     ]
 
     for candidate in candidates:
         if candidate.exists():
             return candidate.resolve()
 
-    # 若未命中，则返回默认构建路径并抛出友好异常
-    default_target = (PROJECT_ROOT / "build" / "libformergesortlists.so").resolve()
+    default_target = (PROJECT_ROOT / "lib" / "libformergesortlists.dylib").resolve()
     raise FileNotFoundError(
-        f"未找到共享动态库文件！请先执行编译构建生成动态库。\n"
+        f"未找到共享动态库文件！请先执行 `xmake` 编译构建生成动态库。\n"
         f"已尝试查找的路径包括:\n" + "\n".join(f"  - {c}" for c in [default_target] + candidates)
     )
 
@@ -86,99 +87,6 @@ class ThreadTestResult:
     error_message: str = ""
 
 
-def generate_workload_by_type(
-    thread_id: int,
-    workload_type: str,
-    base_k: int = 100,
-    max_len: int = 100,
-) -> Tuple[str, List[List[int]]]:
-    """
-    根据指定负载特征类型生成多样化的测试数据集，涵盖标准规模、高并发分支、跨零负数、稠密重复、极端边界等场景
-    """
-    # 采用可复现的线程独立随机数生成器，保证结果确定性与多线程互不干扰
-    rng = np.random.default_rng(seed=1000 + thread_id)
-    lists: List[List[int]] = []
-
-    if workload_type == "medium_scale":
-        k = max(1, base_k)
-        description = f"标准中等规模负载 ({k} 组正序列表，长度 10~{max_len})"
-        for _ in range(k):
-            length = int(rng.integers(10, max(11, max_len + 1)))
-            steps = rng.integers(1, 10, size=length)
-            sublist = np.cumsum(steps).tolist()
-            lists.append(sublist)
-
-    elif workload_type == "high_cardinality":
-        k = max(2, base_k * 2)
-        description = f"高分支短列表负载 ({k} 组短升序列表，考察多路分治调度)"
-        for _ in range(k):
-            length = int(rng.integers(5, 30))
-            steps = rng.integers(1, 8, size=length)
-            sublist = np.cumsum(steps).tolist()
-            lists.append(sublist)
-
-    elif workload_type == "negative_span":
-        k = max(2, int(base_k * 0.8))
-        description = f"负数与跨零混合负载 ({k} 组包含负数及跨零递增列表)"
-        for _ in range(k):
-            length = int(rng.integers(10, 80))
-            start_val = int(rng.integers(-5000, -100))
-            steps = rng.integers(1, 15, size=length)
-            sublist = (start_val + np.cumsum(steps)).tolist()
-            lists.append(sublist)
-
-    elif workload_type == "dense_duplicates":
-        k = max(2, int(base_k * 1.2))
-        description = f"稠密重复元素负载 ({k} 组含大量等值元素列表，含单元素边界)"
-        for i in range(k):
-            if i % 10 == 0:
-                # 边界情况：单元素列表
-                lists.append([int(rng.integers(0, 1000))])
-            else:
-                length = int(rng.integers(5, 60))
-                # 步长含 0，产生连续相同值
-                steps = rng.integers(0, 4, size=length)
-                base = int(rng.integers(0, 200))
-                sublist = (base + np.cumsum(steps)).tolist()
-                lists.append(sublist)
-
-    elif workload_type == "boundary_extremes":
-        k = max(5, int(base_k * 0.5))
-        description = f"极端边界混合负载 ({k} 组含空列表、单元素、极值交织列表)"
-        lists.append([])  # 空列表边界
-        lists.append([int(rng.integers(-10000, 10000))])  # 单元素
-        lists.append([-99999, 0, 99999])  # 跨极值三元组
-        for _ in range(k - 3):
-            sub_len = int(rng.integers(0, 20))
-            if sub_len == 0:
-                lists.append([])
-            else:
-                steps = rng.integers(1, 5, size=sub_len)
-                sublist = (int(rng.integers(-500, 500)) + np.cumsum(steps)).tolist()
-                lists.append(sublist)
-
-    elif workload_type == "reverse_distributed":
-        k = max(4, int(base_k * 0.6))
-        description = f"逆序分布区间负载 ({k} 组子列表间呈大体逆序分布，考察跨区间归并)"
-        for i in range(k):
-            length = int(rng.integers(5, 40))
-            base = (k - i) * 500
-            steps = rng.integers(1, 5, size=length)
-            sublist = (base + np.cumsum(steps)).tolist()
-            lists.append(sublist)
-
-    else:
-        k = max(1, base_k)
-        description = f"通用随机规模负载 (线程 {thread_id} 自适应生成，{k} 组列表)"
-        for _ in range(k):
-            length = int(rng.integers(5, max(6, max_len)))
-            steps = rng.integers(1, 10, size=length)
-            sublist = np.cumsum(steps).tolist()
-            lists.append(sublist)
-
-    return description, lists
-
-
 def execute_merge_task(
     thread_id: int,
     worker_name: str,
@@ -190,8 +98,8 @@ def execute_merge_task(
     """
     start_time = time.perf_counter()
     try:
-        # 调用 TaskOrchestrator 统筹高层调度并驱动 C++ 底层归并
-        output_list = orchestrator.coordinate_execution(input_lists)
+        # 并发执行时静默控制台，避免 stdout 锁争用
+        output_list = orchestrator.coordinate_execution(input_lists, verbose=False)
         duration = time.perf_counter() - start_time
         return thread_id, worker_name, input_lists, output_list, duration, None
     except Exception as exc:
@@ -231,14 +139,14 @@ def verify_thread_result(
         )
 
     # 1. 元素总数量守恒校验
-    is_length_valid = (len(output_list) == total_elements)
+    is_length_valid = len(output_list) == total_elements
 
     # 2. 升序单调性校验
     is_sorted = all(output_list[i] <= output_list[i + 1] for i in range(len(output_list) - 1))
 
     # 3. 元素内容与基准排序结果比对校验
     ground_truth = sorted([item for sub in input_lists for item in sub])
-    is_content_valid = (output_list == ground_truth)
+    is_content_valid = output_list == ground_truth
 
     passed = is_length_valid and is_sorted and is_content_valid
     throughput = total_elements / duration if duration > 0 else 0.0
@@ -259,14 +167,14 @@ def verify_thread_result(
     )
 
 
-def save_multithread_results(
+def save_multithread_results_async(
     docs_dir: Path,
     results: List[ThreadTestResult],
     wall_duration: float,
     library_path: str,
 ) -> Tuple[Path, Path, Path]:
     """
-    将多线程测试的输入数据、归并结果以及性能评测报告完整持久化到 docs/ 目录下
+    利用 AsyncFileWriter 异步非阻塞持久化落盘输入、输出及性能评测报告
     """
     docs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -274,85 +182,46 @@ def save_multithread_results(
     after_path = docs_dir / "multithread_data_after.txt"
     report_path = docs_dir / "multithread_test_report.txt"
 
-    # 1. 保存多线程测试前的数据集 (docs/multithread_data_before.txt)
-    with open(before_path, "w", encoding="utf-8") as file_before:
-        file_before.write("# ==============================================================================\n")
-        file_before.write("# TaskOrchestrator 多线程并发测试 - 处理前原始输入数据集\n")
-        file_before.write(f"# 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        file_before.write("# 格式规范: 每个线程数据由标识行开始，随后每一行表示一个升序子列表，数字空格隔开\n")
-        file_before.write("# ==============================================================================\n\n")
+    with AsyncFileWriter(before_path) as writer_before, \
+         AsyncFileWriter(after_path) as writer_after, \
+         AsyncFileWriter(report_path) as writer_report:
 
-        for res in results:
-            file_before.write(f"### [Thread-{res.thread_id}] {res.worker_name}\n")
-            file_before.write(f"# 子列表总数 (k): {res.num_lists}, 元素总数: {res.total_elements}\n")
-            for sublist in res.input_lists:
-                file_before.write(" ".join(map(str, sublist)) + "\n")
-            file_before.write("\n")
-
-    # 2. 保存多线程测试后的归并结果 (docs/multithread_data_after.txt)
-    with open(after_path, "w", encoding="utf-8") as file_after:
-        file_after.write("# ==============================================================================\n")
-        file_after.write("# TaskOrchestrator 多线程并发测试 - 处理后最终有序合并结果\n")
-        file_after.write(f"# 执行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        file_after.write("# 格式规范: 每个线程对应一行完整的全局升序排列结果\n")
-        file_after.write("# ==============================================================================\n\n")
-
-        for res in results:
-            status_str = "SUCCESS" if res.passed else "FAILED"
-            file_after.write(
-                f"### [Thread-{res.thread_id}] Status: {status_str} | "
-                f"Merged Elements: {len(res.output_list)} | Cost: {res.duration:.6f}s\n"
-            )
-            file_after.write(" ".join(map(str, res.output_list)) + "\n\n")
-
-    # 3. 统计汇总并生成性能评测报告 (docs/multithread_test_report.txt)
-    total_elements_all = sum(res.total_elements for res in results)
-    total_lists_all = sum(res.num_lists for res in results)
-    sum_thread_duration = sum(res.duration for res in results)
-    speedup = sum_thread_duration / wall_duration if wall_duration > 0 else 1.0
-    overall_throughput = total_elements_all / wall_duration if wall_duration > 0 else 0.0
-    all_passed = all(res.passed for res in results)
-
-    report_lines = [
-        "================================================================================",
-        "                    TaskOrchestrator 多线程并发运行测试报告",
-        "================================================================================",
-        f"测试时间        : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"C++ 动态共享库  : {library_path}",
-        f"持久化输出目录  : {docs_dir}",
-        f"并发工作线程数  : {len(results)}",
-        f"处理子列表总量  : {total_lists_all} 个",
-        f"归并元素总规模  : {total_elements_all} 个整数",
-        f"并发归并总耗时  : {wall_duration:.6f} 秒 (Wall-clock Time)",
-        f"线程执行耗时累加: {sum_thread_duration:.6f} 秒 (Cumulative Thread Time)",
-        f"并发实际加速比  : {speedup:.2f}x",
-        f"系统并发总吞吐率: {overall_throughput:,.1f} elements/sec",
-        "--------------------------------------------------------------------------------",
-        "各线程并发执行与正确性校验明细:",
-        "--------------------------------------------------------------------------------",
-    ]
-
-    for res in results:
-        status_tag = "PASS" if res.passed else "FAIL"
-        report_lines.append(f"[Thread-{res.thread_id}] {res.worker_name}")
-        report_lines.append(
-            f"  - 校验状态: [{status_tag}] (数量守恒: {res.is_length_valid}, "
-            f"升序排列: {res.is_sorted}, 元素全等: {res.is_content_valid})"
+        # 1. 异步非阻塞写入原始输入数据
+        before_header = (
+            "# ==============================================================================\n"
+            "# TaskOrchestrator 多线程并发测试 - 处理前原始输入数据集\n"
+            f"# 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            "# 格式规范: 每个线程数据由标识行开始，随后每一行表示一个升序子列表，数字空格隔开\n"
+            "# ==============================================================================\n\n"
         )
-        report_lines.append(f"  - 子列表数: {res.num_lists}, 元素总数: {res.total_elements}")
-        report_lines.append(f"  - 耗时    : {res.duration:.6f} 秒 | 吞吐率: {res.throughput:,.1f} elements/sec")
-        if res.error_message:
-            report_lines.append(f"  - 异常信息: {res.error_message}")
-        report_lines.append("")
+        writer_before.write(before_header)
+        for res in results:
+            writer_before.write(
+                serialize_thread_input_block(res.thread_id, res.worker_name, res.input_lists)
+            )
 
-    report_lines.extend([
-        "--------------------------------------------------------------------------------",
-        f"测试总体结论: {'>>> 全部测试用例通过 (ALL TESTS PASSED) <<<' if all_passed else '>>> 测试未完全通过 (SOME TESTS FAILED) <<<'}",
-        "================================================================================",
-    ])
+        # 2. 异步非阻塞写入归并结果
+        after_header = (
+            "# ==============================================================================\n"
+            "# TaskOrchestrator 多线程并发测试 - 处理后最终有序合并结果\n"
+            f"# 执行时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            "# 格式规范: 每个线程对应一行完整的全局升序排列结果\n"
+            "# ==============================================================================\n\n"
+        )
+        writer_after.write(after_header)
+        for res in results:
+            writer_after.write(
+                serialize_thread_output_block(res.thread_id, res.passed, res.output_list, res.duration)
+            )
 
-    with open(report_path, "w", encoding="utf-8") as file_report:
-        file_report.write("\n".join(report_lines) + "\n")
+        # 3. 异步非阻塞写入评测报告
+        report_content = format_multithread_report(
+            results=results,
+            wall_duration=wall_duration,
+            library_path=library_path,
+            docs_dir=str(docs_dir),
+        )
+        writer_report.write(report_content)
 
     return before_path, after_path, report_path
 
@@ -369,10 +238,10 @@ def run_multithread_test(
     """
     主控测试流程：
     1. 初始化 TaskOrchestrator (加载 C++ 动态库)
-    2. 预先生成各线程具有代表性的测试数据集
+    2. 预先生成各线程具有代表性的测试数据集 (模块化 generator)
     3. 并发调度 coordinate_execution 并精准度量并行耗时
     4. 严谨校验输出正确性并统计性能指标
-    5. 持久化数据与报告至 docs/ 目录
+    5. 通过 AsyncFileWriter 非阻塞持久化数据与报告至 docs/ 目录
     """
     docs_dir = Path(docs_dir_path)
     if not docs_dir.is_absolute():
@@ -387,10 +256,8 @@ def run_multithread_test(
         print(f"📁 结果持久化目录: {docs_dir}")
         print("=" * 80)
 
-    # 1. 实例化高层任务编排器
-    orchestrator = TaskOrchestrator(str(resolved_lib))
+    orchestrator = TaskOrchestrator(str(resolved_lib), verbose=False)
 
-    # 预设不同线程的业务测试场景目录
     workload_type_catalog = [
         "medium_scale",        # 场景 0：标准中等规模负载
         "high_cardinality",    # 场景 1：高分支短链表负载
@@ -400,7 +267,7 @@ def run_multithread_test(
         "reverse_distributed", # 场景 5：逆序区间分布负载
     ]
 
-    # [Stage 1] 预先准备数据，避免数据生成耗时干扰纯并发归并基准测试
+    # [Stage 1] 模块化生成数据
     if verbose:
         print("\n[Stage 1] 正在准备各并发线程测试数据集...")
     prepared_workloads: List[Tuple[int, str, List[List[int]]]] = []
@@ -458,20 +325,20 @@ def run_multithread_test(
         for tid, name, inp, out, dur, err in raw_results
     ]
 
-    # [Stage 4] 持久化数据到 docs 目录
+    # [Stage 4] 异步非阻塞持久化数据到 docs 目录
     if save_docs:
         if verbose:
-            print("\n[Stage 4] 正在将测试原始数据与归并结果持久化至 docs/ 目录...")
-        before_p, after_p, report_p = save_multithread_results(
+            print("\n[Stage 4] 正在通过 AsyncFileWriter 异步非阻塞持久化至 docs/ 目录...")
+        before_p, after_p, report_p = save_multithread_results_async(
             docs_dir=docs_dir,
             results=results,
             wall_duration=wall_duration,
             library_path=str(resolved_lib),
         )
         if verbose:
-            print(f"  ✓ 原始输入数据已保存至: {before_p}")
-            print(f"  ✓ 归并排序结果已保存至: {after_p}")
-            print(f"  ✓ 性能评测报告已保存至: {report_p}")
+            print(f"  ✓ 原始输入数据已异步写入: {before_p}")
+            print(f"  ✓ 归并排序结果已异步写入: {after_p}")
+            print(f"  ✓ 性能评测报告已异步写入: {report_p}")
 
     # [Stage 5] 控制台打印汇总概览
     all_passed = all(res.passed for res in results)
@@ -508,7 +375,7 @@ class TestTaskOrchestratorMultithreading(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.lib_path = resolve_library_path()
-        cls.orchestrator = TaskOrchestrator(str(cls.lib_path))
+        cls.orchestrator = TaskOrchestrator(str(cls.lib_path), verbose=False)
 
     def test_multithread_concurrency(self) -> None:
         """标准 4 线程并发压力与正确性集成测试"""
@@ -536,27 +403,16 @@ class TestTaskOrchestratorMultithreading(unittest.TestCase):
 
     def test_direct_orchestrator_boundary_conditions(self) -> None:
         """TaskOrchestrator 核心接口直接调用的边界值校验"""
-        # 1. 空输入测试
         self.assertEqual(self.orchestrator.coordinate_execution([]), [])
-
-        # 2. 全空子列表集合
         self.assertEqual(self.orchestrator.coordinate_execution([[], [], []]), [])
-
-        # 3. 单列表测试
         self.assertEqual(self.orchestrator.coordinate_execution([[1, 2, 3]]), [1, 2, 3])
-
-        # 4. 混合空列表与有效列表
         mixed = [[], [5], [], [1, 3], [], [2, 4]]
         self.assertEqual(self.orchestrator.coordinate_execution(mixed), [1, 2, 3, 4, 5])
-
-        # 5. 负数与跨零有序性
         neg_input = [[-10, -5, 0], [-7, -2, 3], [-1, 2, 4]]
         self.assertEqual(
             self.orchestrator.coordinate_execution(neg_input),
             [-10, -7, -5, -2, -1, 0, 2, 3, 4],
         )
-
-        # 6. 大量重复元素
         dup_input = [[2, 2, 2], [2], [1, 2, 3]]
         self.assertEqual(
             self.orchestrator.coordinate_execution(dup_input),
@@ -585,7 +441,7 @@ def main() -> None:
         "--lib-path",
         type=str,
         default=None,
-        help="C++ 共享库路径 (默认自动探测: build/libformergesortlists.so 或 .dylib)",
+        help="C++ 共享库路径 (默认自动探测: lib/libformergesortlists.dylib 或 .so)",
     )
     parser.add_argument("--no-save", action="store_true", help="跳过结果文件落盘保存至 docs/ 目录")
     parser.add_argument("--quiet", "-q", action="store_true", help="减少控制台输出信息")

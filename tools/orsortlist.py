@@ -1,11 +1,24 @@
+"""
+高层任务编排控制器 (TaskOrchestrator)
+------------------------------------------------------------
+- 遵循 Pitchfork 标准，通过 ctypes 动态载入 lib/ 下的 C-ABI 共享库
+- 负责参数平铺打包并驱动底层 C++ 多路分治并发归并
+- 支持静默并发执行，避免多线程控制台输出锁引发的 I/O 争用
+"""
+
 import ctypes
 import os
+from pathlib import Path
+from typing import List, Optional
+
 
 class TaskOrchestrator:
-    def __init__(self, library_path: str) -> None:
+    def __init__(self, library_path: str, verbose: bool = False) -> None:
         self.library_path = library_path
-        print(f"Python 高层调度器初始化完成：正在加载动态共享库 -> {library_path}")
-        
+        self.verbose = verbose
+        if self.verbose:
+            print(f"Python 高层调度器初始化完成：正在加载动态共享库 -> {library_path}")
+
         # 加载编译生成的 C++ 共享库
         self._lib = ctypes.CDLL(library_path)
         self._setup_bindings()
@@ -13,20 +26,26 @@ class TaskOrchestrator:
     def _setup_bindings(self) -> None:
         """绑定 C++ 导出的 C 兼容接口及数据类型"""
         self._lib.merge_k_lists_c_api.argtypes = [
-            ctypes.POINTER(ctypes.c_int), # flat_data
-            ctypes.POINTER(ctypes.c_int), # lengths
-            ctypes.c_int,                 # k
-            ctypes.POINTER(ctypes.c_int)  # out_size
+            ctypes.POINTER(ctypes.c_int),  # flat_data
+            ctypes.POINTER(ctypes.c_int),  # lengths
+            ctypes.c_int,                  # k
+            ctypes.POINTER(ctypes.c_int),  # out_size
         ]
         self._lib.merge_k_lists_c_api.restype = ctypes.POINTER(ctypes.c_int)
-        
+
         self._lib.free_merged_result.argtypes = [ctypes.POINTER(ctypes.c_int)]
         self._lib.free_merged_result.restype = None
 
-    def coordinate_execution(self, lists_of_lists: list[list[int]]) -> list[int]:
+    def coordinate_execution(
+        self, 
+        lists_of_lists: List[List[int]], 
+        verbose: Optional[bool] = None
+    ) -> List[int]:
         """高层业务编排：统筹参数转换并驱动 C++ 底层并发核心"""
-        print("当前阶段：由 Python 负责高层任务编排，准备向 C++ 传递数据...")
-        
+        is_verbose = self.verbose if verbose is None else verbose
+        if is_verbose:
+            print("当前阶段：由 Python 负责高层任务编排，准备向 C++ 传递数据...")
+
         k = len(lists_of_lists)
         if k == 0:
             return []
@@ -47,26 +66,28 @@ class TaskOrchestrator:
             return []
 
         result_list = [result_ptr[i] for i in range(out_size.value)]
-        
+
         # 释放底层分配的堆内存
         self._lib.free_merged_result(result_ptr)
 
-        print(f"底层并发计算完成，成功合并返回 {len(result_list)} 个有序元素。")
+        if is_verbose:
+            print(f"底层并发计算完成，成功合并返回 {len(result_list)} 个有序元素。")
         return result_list
 
+
 if __name__ == "__main__":
-    from pathlib import Path
     project_root = Path(__file__).resolve().parent.parent
     lib_candidates = [
-        project_root / "build" / "libformergesortlists.so",
+        project_root / "lib" / "libformergesortlists.dylib",
+        project_root / "lib" / "libformergesortlists.so",
         project_root / "build" / "libformergesortlists.dylib",
+        project_root / "build" / "libformergesortlists.so",
     ]
     lib_path = next((p for p in lib_candidates if p.exists()), None)
     if lib_path:
-        orchestrator = TaskOrchestrator(str(lib_path))
+        orchestrator = TaskOrchestrator(str(lib_path), verbose=True)
         sample_input = [[1, 4, 7], [2, 5, 8], [3, 6, 9]]
         result = orchestrator.coordinate_execution(sample_input)
         print(f"示例运行结果: {result}")
     else:
         print("未找到 C++ 共享库，请先编译生成对应库。")
-

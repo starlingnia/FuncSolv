@@ -1,13 +1,15 @@
-#include "MergeSortedLists/MergeSortedLists.h"
-#include <vector>
+#include "FuncSolv/MergeSortedLists.h"
 #include <memory>
+#include <span>
+#include <vector>
 
 extern "C" {
 
-// 接口函数：接收扁平化的数据与长度元数据，返回处理后的连续内存指针
+/**
+ * @brief 传统接口：接收扁平数据并转为链表后多路归并
+ */
 int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* out_size) {
-    // 卫语句：当输入指针为空时直接返回空指针
-    if ((flat_data == nullptr) || (lengths == nullptr) || (k <= 0)) {
+    if ((flat_data == nullptr) || (lengths == nullptr) || (k <= 0) || (out_size == nullptr)) {
         return nullptr;
     }
 
@@ -15,8 +17,7 @@ int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* o
     lists.reserve(k);
 
     const int* current_pos = flat_data;
-    
-    // 步骤一：在 C++ 堆内存中重建复杂数据结构（链表）
+
     for (int i = 0; i < k; ++i) {
         int length = lengths[i];
         std::shared_ptr<ListNode> head = nullptr;
@@ -37,11 +38,9 @@ int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* o
         lists.push_back(head);
     }
 
-    // 步骤二：调用核心算法
-    MergeKSortedListsSolution solution;
+    funcsolv::MergeKSortedListsSolution solution;
     auto merged_head = solution.mergeKLists(lists);
 
-    // 步骤三：计算结果长度
     int total_len = 0;
     auto cursor = merged_head;
     while (cursor != nullptr) {
@@ -50,13 +49,11 @@ int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* o
     }
 
     *out_size = total_len;
-    
-    // 卫语句：结果为空时直接返回
+
     if (total_len == 0) {
         return nullptr;
     }
 
-    // 步骤四：将结果平铺到连续内存中，交由指针传递给 Python
     int* result_array = new int[total_len];
     cursor = merged_head;
     for (int i = 0; i < total_len; ++i) {
@@ -67,9 +64,42 @@ int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* o
     return result_array;
 }
 
-// 配套的内存释放接口：闭环生命周期管理，防止内存泄漏
+/**
+ * @brief 高性能新接口：零链表堆分配，直接基于连续内存切片 (span) + 最小堆并发归并
+ */
+int* merge_k_spans_c_api(const int* flat_data, const int* lengths, int k, int* out_size) {
+    if ((flat_data == nullptr) || (lengths == nullptr) || (k <= 0) || (out_size == nullptr)) {
+        return nullptr;
+    }
+
+    std::vector<std::span<const int>> spans;
+    spans.reserve(k);
+
+    const int* current_pos = flat_data;
+    for (int i = 0; i < k; ++i) {
+        const int length = lengths[i];
+        spans.emplace_back(current_pos, length);
+        current_pos += length;
+    }
+
+    funcsolv::MergeKSortedListsSolution solution;
+    std::vector<int> merged_vec = solution.mergeKSpans(spans);
+
+    *out_size = static_cast<int>(merged_vec.size());
+    if (merged_vec.empty()) {
+        return nullptr;
+    }
+
+    int* result_array = new int[merged_vec.size()];
+    std::copy(merged_vec.begin(), merged_vec.end(), result_array);
+
+    return result_array;
+}
+
+/**
+ * @brief 释放结果内存的统一接口
+ */
 void free_merged_result(int* ptr) {
-    // 卫语句：指针有效时执行安全的数组成员释放
     if (ptr != nullptr) {
         delete[] ptr;
     }

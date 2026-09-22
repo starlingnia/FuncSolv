@@ -1,9 +1,19 @@
-# Xmake cache
+# Xmake cache and intermediate objects
 .xmake/
-build/
-bin/
+build/*
+!build/*_task.cpp
+
+# Binaries and libraries
+bin/*
+!bin/.gitkeep
+lib/*
+!lib/.gitkeep
+
+# Python cache
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
 
 # MacOS Cache
 .DS_Store
-
-
