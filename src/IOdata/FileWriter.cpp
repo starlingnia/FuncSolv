@@ -1,16 +1,13 @@
+import std;
 #include <IOdata/FileWriter.h>
-
-#include <fstream>
-#include <iomanip>
-#include <print>
 
 namespace iodata {
 
 [[nodiscard]] bool write_matrix_to_csv(
     const std::filesystem::path& file_path,
     std::span<const double> matrix,
-    size_t rows,
-    size_t cols,
+    std::size_t rows,
+    std::size_t cols,
     bool include_header,
     std::string_view header_str) {
 
@@ -32,8 +29,8 @@ namespace iodata {
     }
 
     out << std::setprecision(16);
-    for (size_t r = 0; r < rows; ++r) {
-        for (size_t c = 0; c < cols; ++c) {
+    for (std::size_t r = 0; r < rows; ++r) {
+        for (std::size_t c = 0; c < cols; ++c) {
             out << matrix[r * cols + c];
             if (c + 1 < cols) {
                 out << ',';
@@ -70,7 +67,7 @@ namespace iodata {
     }
 
     out << std::setprecision(17);
-    for (size_t i = 0; i < col1.size(); ++i) {
+    for (std::size_t i = 0; i < col1.size(); ++i) {
         out << col1[i] << ',' << col2[i] << '\n';
     }
 

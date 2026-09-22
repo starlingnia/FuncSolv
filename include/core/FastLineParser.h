@@ -1,10 +1,6 @@
 #pragma once
 
-#include <charconv>
-#include <span>
-#include <string_view>
-#include <system_error>
-#include <vector>
+import std;
 
 namespace core::io {
 
@@ -13,41 +9,40 @@ namespace core::io {
  * @param line 包含由空格分隔的一行文本视图
  * @param out_numbers 用于存储解析结果的目标向量
  * 
- * 遵循 GSL 规范：
- * - 使用 std::string_view 避免深拷贝
- * - 使用 std::from_chars 达到最高性能数字解析，彻底杜绝 std::istringstream 堆分配开销
- * - 采用 Guard Clauses 防卫式退出
+ * 优势与特性：
+ * - 纯 string_view 内存切片，无子字符串复制
+ * - 基于 std::from_chars 的底层无异常高速字符转整数机制
  */
-inline void parse_integers_from_line(std::string_view line, std::vector<int>& out_numbers) {
+inline bool parse_integers_from_line(
+    std::string_view line,
+    std::vector<int>& out_numbers
+) {
     out_numbers.clear();
-    
-    // 卫语句：空行直接返回
-    if (line.empty()) {
-        return;
-    }
+    out_numbers.reserve(64);
 
     const char* ptr = line.data();
-    const char* const end = ptr + line.size();
+    const char* end = ptr + line.size();
 
     while (ptr < end) {
-        // 快速跳过前置空白符
-        while (ptr < end && (*ptr == ' ' || *ptr == '\t' || *ptr == '\r' || *ptr == '\n')) {
+        // 跳过行首或数值间的空白分隔符
+        while (ptr < end && *ptr == ' ') {
             ++ptr;
         }
-        if (ptr >= end) {
+        if (ptr == end) {
             break;
         }
 
-        int value = 0;
-        const auto [next_ptr, ec] = std::from_chars(ptr, end, value);
-        if (ec == std::errc{}) {
-            out_numbers.push_back(value);
-            ptr = next_ptr;
-        } else {
-            // 跳过无法解析的单个字符以恢复流状态
-            ++ptr;
+        int val = 0;
+        const auto [p, ec] = std::from_chars(ptr, end, val);
+        if (ec != std::errc()) {
+            return false;
         }
+
+        out_numbers.push_back(val);
+        ptr = p;
     }
+
+    return true;
 }
 
 } // namespace core::io

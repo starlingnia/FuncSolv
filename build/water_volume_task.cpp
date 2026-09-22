@@ -4,15 +4,7 @@
 #include <core/FastFileReader.h>
 #include <core/FastLineParser.h>
 
-#include <algorithm>
-#include <filesystem>
-#include <future>
-#include <print>
-#include <random>
-#include <span>
-#include <string>
-#include <string_view>
-#include <vector>
+import std;
 
 namespace {
 
@@ -34,7 +26,7 @@ namespace {
  */
 [[nodiscard]] bool generate_random_test_file_async(
     const std::filesystem::path& file_path,
-    const size_t case_count = 1000) {
+    const std::size_t case_count = 1000) {
 
     core::io::AsyncFileWriter writer(file_path);
 
@@ -44,7 +36,7 @@ namespace {
     std::uniform_int_distribution<int> length_dist(0, 200);
     std::uniform_int_distribution<int> height_dist(0, 600);
 
-    for (size_t i = 0; i < case_count; ++i) {
+    for (std::size_t i = 0; i < case_count; ++i) {
         const int length = length_dist(rng);
         std::string line;
         line.reserve(length * 5);
@@ -65,12 +57,12 @@ namespace {
 /**
  * @brief 格式化输出数组视图辅助函数
  */
-void print_case_summary(size_t index, std::span<const int> case_span, int water_volume) {
+void print_case_summary(std::size_t index, std::span<const int> case_span, int water_volume) {
     std::string terrain_str = "[";
-    const size_t display_limit = 15;
-    const size_t count = std::min(case_span.size(), display_limit);
+    const std::size_t display_limit = 15;
+    const std::size_t count = std::min(case_span.size(), display_limit);
 
-    for (size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < count; ++i) {
         terrain_str += std::to_string(case_span[i]);
         if (i + 1 < case_span.size()) {
             terrain_str += ", ";
@@ -91,7 +83,7 @@ int run_water_volume_task(std::span<const std::string_view> args) {
     const std::filesystem::path file_path = args.empty() 
         ? resolve_project_docs_path("random_terrain_cases.txt") 
         : std::filesystem::path(std::string(args[0]));
-    const size_t case_count = 1000;
+    const std::size_t case_count = 1000;
 
     std::println("=================================================");
     std::println("1. 正在通过 AsyncFileWriter 异步生成测试用例文件 -> {}", file_path.string());
@@ -102,7 +94,7 @@ int run_water_volume_task(std::span<const std::string_view> args) {
     std::println("2. 正在通过 FastFileReader 快速零拷贝解析测试用例...");
     const std::vector<std::vector<int>> test_cases = core::io::load_integer_dataset(file_path);
     if (test_cases.empty()) {
-        std::println(stderr, "警告: 读取到的测试用例为空！");
+        std::println(std::cerr, "警告: 读取到的测试用例为空！");
         return 1;
     }
     std::println("   成功读取 {} 组测试用例", test_cases.size());
@@ -121,8 +113,8 @@ int run_water_volume_task(std::span<const std::string_view> args) {
         }));
     }
 
-    const size_t display_count = std::min(test_cases.size(), size_t{10});
-    for (size_t i = 0; i < test_cases.size(); ++i) {
+    const std::size_t display_count = std::min(test_cases.size(), std::size_t{10});
+    for (std::size_t i = 0; i < test_cases.size(); ++i) {
         const int result = futures[i].get();
         if (i < display_count) {
             print_case_summary(i, test_cases[i], result);

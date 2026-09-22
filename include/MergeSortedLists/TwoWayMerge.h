@@ -1,9 +1,8 @@
 #pragma once
 
 #include "MergeSortedLists/ListNode.h"
-#include <memory>
-#include <span>
-#include <vector>
+
+import std;
 
 namespace msl {
 

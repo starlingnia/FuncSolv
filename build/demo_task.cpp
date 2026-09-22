@@ -1,5 +1,6 @@
 #include <FuncSolv/Registry.h>
-#include <iostream>
+
+import std;
 
 // 基础无参任务
 void run_demo() {

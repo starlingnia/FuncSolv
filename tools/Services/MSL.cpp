@@ -1,14 +1,9 @@
-#include "FuncSolv/MergeSortedLists.h"
-#include <memory>
-#include <span>
-#include <vector>
+#include "MergeSortedLists/MergeSortedLists.h"
 
-extern "C" {
 
-/**
- * @brief 传统接口：接收扁平数据并转为链表后多路归并
- */
-int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* out_size) {
+namespace {
+
+int* internal_merge_k_lists(const int* flat_data, const int* lengths, int k, int* out_size) {
     if ((flat_data == nullptr) || (lengths == nullptr) || (k <= 0) || (out_size == nullptr)) {
         return nullptr;
     }
@@ -64,10 +59,7 @@ int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* o
     return result_array;
 }
 
-/**
- * @brief 高性能新接口：零链表堆分配，直接基于连续内存切片 (span) + 最小堆并发归并
- */
-int* merge_k_spans_c_api(const int* flat_data, const int* lengths, int k, int* out_size) {
+int* internal_merge_k_spans(const int* flat_data, const int* lengths, int k, int* out_size) {
     if ((flat_data == nullptr) || (lengths == nullptr) || (k <= 0) || (out_size == nullptr)) {
         return nullptr;
     }
@@ -96,9 +88,18 @@ int* merge_k_spans_c_api(const int* flat_data, const int* lengths, int k, int* o
     return result_array;
 }
 
-/**
- * @brief 释放结果内存的统一接口
- */
+} // namespace
+
+extern "C" {
+
+int* merge_k_lists_c_api(const int* flat_data, const int* lengths, int k, int* out_size) {
+    return internal_merge_k_lists(flat_data, lengths, k, out_size);
+}
+
+int* merge_k_spans_c_api(const int* flat_data, const int* lengths, int k, int* out_size) {
+    return internal_merge_k_spans(flat_data, lengths, k, out_size);
+}
+
 void free_merged_result(int* ptr) {
     if (ptr != nullptr) {
         delete[] ptr;

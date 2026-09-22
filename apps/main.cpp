@@ -1,7 +1,5 @@
+import std;
 #include <FuncSolv/Registry.h>
-#include <iostream>
-#include <vector>
-#include <string_view>
 
 int main(int argc, char* argv[]) {
     const auto& tasks = registry::TaskRegistry::instance().all();

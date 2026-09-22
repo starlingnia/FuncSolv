@@ -1,9 +1,6 @@
 #pragma once
 
-#include <string_view>
-#include <charconv>
-#include <cstdlib>
-#include <cstring>
+import std;
 
 namespace iodata {
 
@@ -58,14 +55,14 @@ namespace iodata {
 // 零拷贝空白字符分割视图提取
 template <typename Callback>
 inline void for_each_token(std::string_view sv, Callback&& callback) {
-    size_t start = 0;
-    const size_t n = sv.size();
+    std::size_t start = 0;
+    const std::size_t n = sv.size();
     while (start < n) {
         while (start < n && (sv[start] == ' ' || sv[start] == '\t' || sv[start] == '\r' || sv[start] == '\n')) {
             ++start;
         }
         if (start >= n) break;
-        size_t end = start;
+        std::size_t end = start;
         while (end < n && sv[end] != ' ' && sv[end] != '\t' && sv[end] != '\r' && sv[end] != '\n') {
             ++end;
         }

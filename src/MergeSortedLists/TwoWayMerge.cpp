@@ -42,8 +42,8 @@ void merge_two_spans(
     out.clear();
     out.reserve(a.size() + b.size());
 
-    size_t i = 0;
-    size_t j = 0;
+    std::size_t i = 0;
+    std::size_t j = 0;
 
     while (i < a.size() && j < b.size()) {
         if (a[i] <= b[j]) {

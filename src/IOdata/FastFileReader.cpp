@@ -1,8 +1,7 @@
+import std;
+
 #include "core/FastFileReader.h"
 #include "core/FastLineParser.h"
-
-#include <fstream>
-#include <string>
 
 namespace core::io {
 
@@ -15,14 +14,21 @@ bool stream_read_lines(
         return false;
     }
 
-    std::ifstream stream(file_path);
-    if (!stream.is_open()) {
+    std::ifstream file_stream(file_path);
+    if (!file_stream.is_open()) {
         return false;
     }
 
-    std::string line_buffer;
-    while (std::getline(stream, line_buffer)) {
-        line_consumer(std::string_view(line_buffer));
+    std::string current_line;
+    // 预分配缓冲区，减少行读取动态扩容开销
+    current_line.reserve(512);
+
+    while (std::getline(file_stream, current_line)) {
+        // 空白行过滤
+        if (current_line.empty()) {
+            continue;
+        }
+        line_consumer(current_line);
     }
 
     return true;
@@ -32,14 +38,18 @@ std::vector<std::vector<int>> load_integer_dataset(
     const std::filesystem::path& file_path
 ) {
     std::vector<std::vector<int>> dataset;
+    dataset.reserve(1024);
 
-    stream_read_lines(file_path, [&dataset](std::string_view line) {
+    const bool success = stream_read_lines(file_path, [&dataset](std::string_view line) {
         std::vector<int> numbers;
-        parse_integers_from_line(line, numbers);
-        if (!numbers.empty()) {
+        if (parse_integers_from_line(line, numbers)) {
             dataset.push_back(std::move(numbers));
         }
     });
+
+    if (!success) {
+        return {};
+    }
 
     return dataset;
 }

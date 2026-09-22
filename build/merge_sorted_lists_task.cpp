@@ -3,15 +3,7 @@
 #include <core/AsyncFileWriter.h>
 #include <core/FastFileReader.h>
 
-#include <algorithm>
-#include <chrono>
-#include <filesystem>
-#include <print>
-#include <random>
-#include <span>
-#include <string>
-#include <string_view>
-#include <vector>
+import std;
 
 namespace {
 
@@ -31,22 +23,22 @@ namespace {
 /**
  * @brief 生成随机多路有序测试数据集
  */
-[[nodiscard]] std::vector<std::vector<int>> generate_test_cases(size_t k = 200, size_t max_len = 100) {
+[[nodiscard]] std::vector<std::vector<int>> generate_test_cases(std::size_t k = 200, std::size_t max_len = 100) {
     std::random_device rd;
     std::mt19937_64 rng(rd());
-    std::uniform_int_distribution<size_t> len_dist(10, max_len);
+    std::uniform_int_distribution<std::size_t> len_dist(10, max_len);
     std::uniform_int_distribution<int> step_dist(1, 10);
 
     std::vector<std::vector<int>> lists;
     lists.reserve(k);
 
-    for (size_t i = 0; i < k; ++i) {
-        const size_t len = len_dist(rng);
+    for (std::size_t i = 0; i < k; ++i) {
+        const std::size_t len = len_dist(rng);
         std::vector<int> sublist;
         sublist.reserve(len);
 
         int current = 0;
-        for (size_t j = 0; j < len; ++j) {
+        for (std::size_t j = 0; j < len; ++j) {
             current += step_dist(rng);
             sublist.push_back(current);
         }
@@ -78,7 +70,7 @@ int run_merge_sorted_lists_task(std::span<const std::string_view> args) {
         core::io::AsyncFileWriter writer(before_file);
         for (const auto& sublist : lists) {
             std::string line;
-            for (size_t i = 0; i < sublist.size(); ++i) {
+            for (std::size_t i = 0; i < sublist.size(); ++i) {
                 line += std::to_string(sublist[i]);
                 if (i + 1 < sublist.size()) line.push_back(' ');
             }
@@ -87,7 +79,7 @@ int run_merge_sorted_lists_task(std::span<const std::string_view> args) {
         writer.close();
     }
 
-    size_t total_items = 0;
+    std::size_t total_items = 0;
     std::vector<std::span<const int>> spans;
     spans.reserve(lists.size());
     for (const auto& lst : lists) {
@@ -116,7 +108,7 @@ int run_merge_sorted_lists_task(std::span<const std::string_view> args) {
     if (length_ok && sorted_ok) {
         std::println("   ✓ 校验通过: 数量守恒且严格单调递增！");
     } else {
-        std::println(stderr, "   ❌ 校验失败: length_ok={}, sorted_ok={}", length_ok, sorted_ok);
+        std::println(std::cerr, "   ❌ 校验失败: length_ok={}, sorted_ok={}", length_ok, sorted_ok);
         return 1;
     }
 
@@ -124,7 +116,7 @@ int run_merge_sorted_lists_task(std::span<const std::string_view> args) {
     core::io::AsyncFileWriter writer(after_file);
     std::string out_line;
     out_line.reserve(merged.size() * 6);
-    for (size_t i = 0; i < merged.size(); ++i) {
+    for (std::size_t i = 0; i < merged.size(); ++i) {
         out_line += std::to_string(merged[i]);
         if (i + 1 < merged.size()) out_line.push_back(' ');
     }

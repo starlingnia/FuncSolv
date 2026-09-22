@@ -17,10 +17,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 def find_default_library() -> Path:
     """按 Pitchfork 标准优先级查找动态共享库"""
     candidates = [
-        PROJECT_ROOT / "lib" / "libformergesortlists.dylib",
-        PROJECT_ROOT / "lib" / "libformergesortlists.so",
-        PROJECT_ROOT / "build" / "libformergesortlists.dylib",
-        PROJECT_ROOT / "build" / "libformergesortlists.so",
+        PROJECT_ROOT / "lib" / "libforwatervolumes.dylib",
+        PROJECT_ROOT / "lib" / "libforwatervolumes.so",
     ]
     for candidate in candidates:
         if candidate.exists():

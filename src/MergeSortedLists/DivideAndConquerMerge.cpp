@@ -1,7 +1,7 @@
 #include "MergeSortedLists/DivideAndConquerMerge.h"
 #include "MergeSortedLists/TwoWayMerge.h"
 
-#include <future>
+import std;
 
 namespace msl {
 
@@ -9,7 +9,7 @@ namespace {
 
 std::shared_ptr<ListNode> internal_divide_conquer(
     std::span<std::shared_ptr<ListNode>> lists,
-    size_t depth
+    std::size_t depth
 ) {
     if (lists.empty()) {
         return nullptr;
@@ -21,7 +21,7 @@ std::shared_ptr<ListNode> internal_divide_conquer(
         return merge_two_lists(lists[0], lists[1]);
     }
 
-    const size_t mid = lists.size() / 2;
+    const std::size_t mid = lists.size() / 2;
     auto left_span = lists.subspan(0, mid);
     auto right_span = lists.subspan(mid);
 
@@ -45,7 +45,7 @@ std::shared_ptr<ListNode> internal_divide_conquer(
 
 std::shared_ptr<ListNode> merge_k_lists_divide_conquer(
     std::span<std::shared_ptr<ListNode>> lists,
-    size_t max_concurrency_depth
+    std::size_t max_concurrency_depth
 ) {
     return internal_divide_conquer(lists, max_concurrency_depth);
 }

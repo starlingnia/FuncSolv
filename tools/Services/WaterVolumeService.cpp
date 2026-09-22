@@ -1,7 +1,6 @@
-#include "FuncSolv/WaterVolume.h"
-#include <future>
-#include <span>
-#include <vector>
+#include "WaterVolume/WaterVolume.h"
+
+import std;
 
 extern "C" {
 

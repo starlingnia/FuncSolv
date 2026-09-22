@@ -1,11 +1,6 @@
 #pragma once
 
-#include <string>
-#include <string_view>
-#include <span>
-#include <unordered_map>
-#include <functional>
-#include <type_traits>
+import std;
 
 namespace registry {
 

@@ -1,7 +1,5 @@
+import std;
 #include <IOdata/FileReader.h>
-
-#include <fstream>
-#include <sstream>
 
 namespace iodata {
 

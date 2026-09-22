@@ -1,5 +1,6 @@
+import std;
+
 #include "WaterVolume/TwoPointerTrap.h"
-#include <algorithm>
 
 namespace watervolume {
 
@@ -8,8 +9,8 @@ int trap_two_pointer(std::span<const int> height) noexcept {
         return 0;
     }
 
-    size_t left = 0;
-    size_t right = height.size() - 1;
+    std::size_t left = 0;
+    std::size_t right = height.size() - 1;
     int left_max = 0;
     int right_max = 0;
     int total_water = 0;

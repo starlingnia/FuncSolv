@@ -1,6 +1,6 @@
 #pragma once
 
-#include <memory>
+import std;
 
 /**
  * @brief 链表节点基础数据结构

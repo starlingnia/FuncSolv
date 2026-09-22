@@ -1,9 +1,8 @@
 #pragma once
 
 #include "MergeSortedLists/ListNode.h"
-#include <memory>
-#include <span>
-#include <vector>
+
+import std;
 
 namespace msl {
 
@@ -12,7 +11,7 @@ namespace msl {
  */
 [[nodiscard]] std::shared_ptr<ListNode> merge_k_lists_divide_conquer(
     std::span<std::shared_ptr<ListNode>> lists,
-    size_t max_concurrency_depth = 3
+    std::size_t max_concurrency_depth = 3
 );
 
 } // namespace msl

@@ -1,14 +1,12 @@
+import std;
 #include <IOdata/DirectoryScanner.h>
-
-#include <algorithm>
-#include <cctype>
 
 namespace iodata {
 
 [[nodiscard]] long long extract_numeric_id(std::string_view filename) noexcept {
     // 寻找最长连续数字序列
     long long result = -1;
-    size_t i = 0;
+    std::size_t i = 0;
     while (i < filename.size()) {
         if (std::isdigit(static_cast<unsigned char>(filename[i]))) {
             long long current = 0;

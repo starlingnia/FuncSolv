@@ -1,7 +1,6 @@
 #include "MergeSortedLists/HeapKWayMerge.h"
 
-#include <numeric>
-#include <queue>
+import std;
 
 namespace msl {
 
@@ -9,8 +8,8 @@ namespace {
 
 struct Cursor {
     int value;
-    size_t list_idx;
-    size_t elem_idx;
+    std::size_t list_idx;
+    std::size_t elem_idx;
 
     bool operator>(const Cursor& other) const noexcept {
         return value > other.value;
@@ -30,7 +29,7 @@ std::vector<int> merge_k_spans_heap(
         return std::vector<int>(spans[0].begin(), spans[0].end());
     }
 
-    size_t total_elements = 0;
+    std::size_t total_elements = 0;
     for (const auto& sp : spans) {
         total_elements += sp.size();
     }
@@ -40,7 +39,7 @@ std::vector<int> merge_k_spans_heap(
 
     std::priority_queue<Cursor, std::vector<Cursor>, std::greater<Cursor>> min_heap;
 
-    for (size_t i = 0; i < spans.size(); ++i) {
+    for (std::size_t i = 0; i < spans.size(); ++i) {
         if (!spans[i].empty()) {
             min_heap.push(Cursor{
                 .value = spans[i][0],
@@ -55,7 +54,7 @@ std::vector<int> merge_k_spans_heap(
         min_heap.pop();
         result.push_back(top.value);
 
-        const size_t next_idx = top.elem_idx + 1;
+        const std::size_t next_idx = top.elem_idx + 1;
         const auto& current_sublist = spans[top.list_idx];
         if (next_idx < current_sublist.size()) {
             min_heap.push(Cursor{

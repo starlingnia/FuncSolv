@@ -1,9 +1,9 @@
 #pragma once
 
+import std;
+
 #include "WaterVolume/MonotonicStackTrap.h"
 #include "WaterVolume/TwoPointerTrap.h"
-
-#include <span>
 
 namespace watervolume {
 

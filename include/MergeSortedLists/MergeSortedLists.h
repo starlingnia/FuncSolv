@@ -5,9 +5,7 @@
 #include "MergeSortedLists/ListNode.h"
 #include "MergeSortedLists/TwoWayMerge.h"
 
-#include <memory>
-#include <span>
-#include <vector>
+import std;
 
 /**
  * @brief 多路归并方案核心类

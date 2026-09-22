@@ -1,6 +1,6 @@
 #pragma once
 
-#include <span>
+import std;
 
 namespace watervolume {
 

@@ -1,9 +1,6 @@
 #pragma once
 
-#include <filesystem>
-#include <span>
-#include <string_view>
-#include <vector>
+import std;
 
 namespace iodata {
 
@@ -11,8 +8,8 @@ namespace iodata {
 [[nodiscard]] bool write_matrix_to_csv(
     const std::filesystem::path& file_path,
     std::span<const double> matrix,
-    size_t rows,
-    size_t cols,
+    std::size_t rows,
+    std::size_t cols,
     bool include_header = false,
     std::string_view header_str = "");
 
